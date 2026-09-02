@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # The Reading Room — Document Q&A
 
 Ask questions of your own documents: PDF, DOCX, TXT, CSV, Excel, HTML, or any web page.
@@ -16,6 +15,8 @@ app.js            Frontend logic (talks to server.py's /api/* routes)
 style.css         Frontend styling
 requirements.txt  Python dependencies
 .env.example      Template for your GROQ_API_KEY
+bake_embeddings.py  Best-effort pre-download of the embedding model at
+                    Docker build time (see "Run with Docker" below)
 ```
 
 ## Setup
@@ -99,6 +100,15 @@ Then open **http://localhost:8000**.
   mcr.microsoft.com/playwright/python:vX.Y.Z-jammy`) to match — a
   mismatched Python package vs. pre-baked browser version is the most
   common way Playwright breaks inside Docker.
+- During the build, `bake_embeddings.py` tries to pre-download the local
+  embedding model so the first real request after startup is fast. This
+  is a pure optimization — if Hugging Face rate-limits the download
+  (`HTTP 429`, common when a build is retried several times in a row),
+  the script retries a few times and then just skips baking the model in
+  rather than failing the whole build. In that case the model downloads
+  automatically on the container's first real request instead, so the
+  app still works fine either way — the only difference is a slightly
+  slower first document upload.
 
 ## Using it
 
@@ -146,6 +156,3 @@ Then open **http://localhost:8000**.
 - **Excel ingestion feels slow**: confirm `python-calamine` actually
   installed (`pip show python-calamine`); without it, Excel falls back to
   the slower `openpyxl` engine silently.
-=======
-# rag-reading-room
->>>>>>> fd6bd478363256cd00b60dd662c02f0f39425cf3
