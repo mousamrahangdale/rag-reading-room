@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Virtual environments
+venv/
+myvenv/
+.venv/
+
+# Secrets - never commit your real key, only .env.example
+.env
+
+# Local vector store data (created at runtime, not source)
+chroma_data/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
