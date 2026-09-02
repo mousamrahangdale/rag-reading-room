@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # The Reading Room — Document Q&A
 
 Ask questions of your own documents: PDF, DOCX, TXT, CSV, Excel, HTML, or any web page.
@@ -145,3 +146,6 @@ Then open **http://localhost:8000**.
 - **Excel ingestion feels slow**: confirm `python-calamine` actually
   installed (`pip show python-calamine`); without it, Excel falls back to
   the slower `openpyxl` engine silently.
+=======
+# rag-reading-room
+>>>>>>> fd6bd478363256cd00b60dd662c02f0f39425cf3
