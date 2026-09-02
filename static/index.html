@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Reading Room — Document Q&A</title>
+<meta name="description" content="Ask questions of your own documents — PDF, DOCX, CSV, Excel, HTML, or any web page.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ SIDEBAR : the catalog ============ -->
+  <aside class="catalog" id="catalog">
+
+    <header class="catalog-header">
+      <div class="catalog-mark">§</div>
+      <div>
+        <h1>The Reading Room</h1>
+        <p class="catalog-sub">ask questions of what you feed it</p>
+      </div>
+    </header>
+
+    <section class="intake-block">
+      <div class="intake-tabs" role="tablist">
+        <button class="intake-tab active" data-mode="file" role="tab">File</button>
+        <button class="intake-tab" data-mode="url" role="tab">URL</button>
+      </div>
+
+      <div class="intake-panel" id="panel-file">
+        <label class="dropzone" id="dropzone" for="fileInput">
+          <span class="dropzone-icon">⤒</span>
+          <span class="dropzone-text">Drop files, or click to choose</span>
+          <span class="dropzone-types">PDF · TXT · CSV · XLSX · DOCX · HTML</span>
+        </label>
+        <input type="file" id="fileInput" hidden multiple accept=".pdf,.txt,.csv,.xlsx,.xls,.docx,.html,.htm">
+      </div>
+
+      <div class="intake-panel hidden" id="panel-url">
+        <input type="url" id="urlInput" placeholder="https://example.com/article">
+        <button class="btn btn-primary" id="ingestUrlBtn">Add page</button>
+      </div>
+
+      <div class="intake-status" id="intakeStatus"></div>
+    </section>
+
+    <section class="drawer-block">
+      <div class="drawer-label">
+        <span>Catalog drawer</span>
+        <button class="link-btn" id="clearBtn">clear all</button>
+      </div>
+      <ul class="drawer-list" id="drawerList">
+        <li class="drawer-empty" id="drawerEmpty">Nothing filed yet.</li>
+      </ul>
+    </section>
+
+    <footer class="catalog-footer">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Checking connection…</span>
+    </footer>
+
+  </aside>
+
+  <!-- ============ MAIN : the desk ============ -->
+  <main class="desk">
+
+    <div class="desk-empty" id="deskEmpty">
+      <div class="desk-empty-mark">✦</div>
+      <h2>File something to begin</h2>
+      <p>Add a document or a page from the catalog on the left, then ask it anything.</p>
+    </div>
+
+    <div class="thread" id="thread"></div>
+
+    <div class="scope-bar hidden" id="scopeBar">
+      <details class="scope-select" id="scopeSelect">
+        <summary>
+          <span class="scope-icon">▤</span>
+          <span id="scopeLabel">Asking: all documents</span>
+          <span class="scope-caret">▾</span>
+        </summary>
+        <div class="scope-menu" id="scopeMenu">
+          <label class="scope-option scope-option-all">
+            <input type="checkbox" id="scopeAll" checked>
+            <span>All documents</span>
+          </label>
+          <div class="scope-divider"></div>
+          <ul class="scope-file-list" id="scopeFileList"></ul>
+        </div>
+      </details>
+    </div>
+
+    <form class="asker" id="askForm">
+      <input type="text" id="questionInput" placeholder="Ask about your documents…" autocomplete="off" disabled>
+      <button type="submit" class="btn btn-primary" id="askBtn" disabled>
+        <span class="btn-label">Ask</span>
+      </button>
+    </form>
+
+  </main>
+
+</div>
+
+<template id="tpl-user-msg">
+  <div class="msg msg-user">
+    <div class="msg-bubble"></div>
+  </div>
+</template>
+
+<template id="tpl-assistant-msg">
+  <div class="msg msg-assistant">
+    <div class="msg-mark">§</div>
+    <div class="msg-body">
+      <div class="msg-bubble"></div>
+      <div class="sources"></div>
+    </div>
+  </div>
+</template>
+
+<template id="tpl-source-card">
+  <div class="source-card">
+    <div class="source-card-tab"></div>
+    <div class="source-card-name"></div>
+    <div class="source-card-snippet"></div>
+  </div>
+</template>
+
+<template id="tpl-drawer-item">
+  <li class="drawer-item">
+    <span class="drawer-item-icon">▤</span>
+    <span class="drawer-item-name"></span>
+    <span class="drawer-item-chunks"></span>
+  </li>
+</template>
+
+<template id="tpl-scope-item">
+  <li class="scope-option">
+    <label>
+      <input type="checkbox" class="scope-file-checkbox">
+      <span class="scope-file-name"></span>
+    </label>
+  </li>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

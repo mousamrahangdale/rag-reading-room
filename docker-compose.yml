@@ -1,0 +1,17 @@
+services:
+  rag-app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env   # must contain GROQ_API_KEY (see .env.example)
+    environment:
+      # Chroma's default (tempfile.gettempdir()) resolves to /tmp inside
+      # the container — pointing it here instead means the volume below
+      # actually persists it across "docker compose down"/restarts.
+      - CHROMA_DIR=/app/chroma_data
+    volumes:
+      - chroma_data:/app/chroma_data
+
+volumes:
+  chroma_data:
