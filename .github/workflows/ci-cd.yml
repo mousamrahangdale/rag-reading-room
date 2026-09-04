@@ -1,0 +1,149 @@
+name: CI/CD
+
+# Runs on every push/PR (CI), and deploys only on pushes to main (CD) —
+# so a broken branch/PR never triggers a deploy.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE_NAME: ${{ github.repository }}   # e.g. yourname/rag-reading-room -> lowercased below
+
+jobs:
+  # ---------------------------------------------------------------------
+  # CI: lint + import/boot-check the app with real smoke tests + make
+  # sure the Docker image actually builds. Runs on every push and PR.
+  # ---------------------------------------------------------------------
+  ci:
+    name: Lint, Test & Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"   # caches downloaded wheels between runs, keyed on requirements.txt
+
+      # Full requirements.txt, not just lint tools — server.py/rag_engine.py
+      # import fastapi, langchain, chromadb, etc. at module level, so the
+      # smoke tests below need the real dependency set installed to even
+      # import the app. This does NOT install Playwright's Chromium
+      # browser binary (that's a separate `playwright install` step) —
+      # only needed for actual URL ingestion, not for these smoke tests.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest httpx
+
+      - name: Lint with ruff
+        # --exit-zero on the first pass keeps this from hard-failing your
+        # very first CI run on pre-existing style issues. Remove
+        # --exit-zero once the codebase is clean, so lint errors actually
+        # block merges.
+        run: ruff check . --exit-zero
+
+      - name: Python syntax check
+        run: python -m py_compile server.py rag_engine.py
+
+      # Real smoke tests (tests/test_smoke.py): boots the actual FastAPI
+      # app and hits /api/health, /api/config, /api/documents, /api/ask
+      # (empty-question case), and "/" — all of which work with no
+      # GROQ_API_KEY / HF_TOKEN and make no network/LLM calls. This is
+      # what actually catches "the app doesn't even start" bugs (bad
+      # import, broken route, wrong static-files path) that a plain
+      # syntax check can't see. It intentionally does NOT test real
+      # ingest/ask behavior, which needs live API keys.
+      - name: Run smoke tests
+        env:
+          # Dummy value only so resolve_api_key()/get_llm() error paths
+          # behave the same as a real deployment missing config — no
+          # network calls are made in these tests either way.
+          GROQ_API_KEY: ""
+        # `python -m pytest` (not the bare `pytest` command) — running it
+        # as a module makes Python add the current directory (repo root)
+        # to sys.path automatically, so tests/test_smoke.py's `import
+        # server` can actually find server.py. The bare `pytest` entry
+        # point only adds the tests/ folder itself to sys.path (since
+        # there's no __init__.py there), which fails with
+        # "ModuleNotFoundError: No module named 'server'".
+        run: python -m pytest tests/ -v
+
+      # This does NOT push anywhere — it just proves the Dockerfile builds
+      # cleanly (deps resolve, playwright/chromium installs, etc.) before
+      # we ever try to deploy it.
+      - name: Build Docker image (build-only, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: reading-room:ci-check
+
+  # ---------------------------------------------------------------------
+  # CD: only runs on a push to main, and only if the ci job above passed.
+  # Builds the image again (this time pushing it) and tells Render to
+  # deploy the latest image/commit.
+  # ---------------------------------------------------------------------
+  deploy:
+    name: Build, Push & Deploy
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # needed to push to GHCR
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase image name
+        # GHCR requires the image path to be all-lowercase; github.repository
+        # keeps whatever case your repo name actually has.
+        run: echo "IMAGE_NAME_LC=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # Required for the GitHub Actions cache backend (cache-from/cache-to:
+      # type=gha below) to work — the default Docker driver can't use it.
+      # Without this step, the build fails fast with "buildx failed with:
+      # ... build-cache-backends".
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_NAME_LC }}:latest
+            ghcr.io/${{ env.IMAGE_NAME_LC }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Render watches your GitHub repo directly, but if you've turned that
+      # off (or want deploys gated behind this pipeline instead), a Deploy
+      # Hook does the same job with a single authenticated POST request.
+      # Get the URL from: Render Dashboard -> your service -> Settings ->
+      # Deploy Hook. Store it as a repo secret named RENDER_DEPLOY_HOOK.
+      #
+      # Note: GitHub Actions doesn't allow the `secrets` context directly
+      # inside an `if:` conditional ("Unrecognized named-value: 'secrets'")
+      # — so the secret is passed through `env:` here first, and the `if:`
+      # checks that env var instead. If the secret isn't set, this step is
+      # skipped (not failed) rather than erroring out.
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        if: ${{ env.RENDER_DEPLOY_HOOK != '' }}
+        run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
