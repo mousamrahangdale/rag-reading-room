@@ -65,7 +65,14 @@ jobs:
           # behave the same as a real deployment missing config — no
           # network calls are made in these tests either way.
           GROQ_API_KEY: ""
-        run: pytest tests/ -v
+        # `python -m pytest` (not the bare `pytest` command) — running it
+        # as a module makes Python add the current directory (repo root)
+        # to sys.path automatically, so tests/test_smoke.py's `import
+        # server` can actually find server.py. The bare `pytest` entry
+        # point only adds the tests/ folder itself to sys.path (since
+        # there's no __init__.py there), which fails with
+        # "ModuleNotFoundError: No module named 'server'".
+        run: python -m pytest tests/ -v
 
       # This does NOT push anywhere — it just proves the Dockerfile builds
       # cleanly (deps resolve, playwright/chromium installs, etc.) before
