@@ -9,13 +9,17 @@ from an open-weight model served via Groq's API.
 ## Files
 
 ```
-server.py         FastAPI app: API routes + serves the frontend
-rag_engine.py     Loading, cleaning, chunking, embedding, retrieval, QA
-index.html        Frontend markup
-app.js            Frontend logic (talks to server.py's /api/* routes)
-style.css         Frontend styling
-requirements.txt  Python dependencies
-.env.example      Template for your GROQ_API_KEY and HF_TOKEN
+server.py                    FastAPI app: API routes + serves the frontend
+rag_engine.py                Loading, cleaning, chunking, embedding, retrieval, QA
+index.html                   Frontend markup
+app.js                       Frontend logic (talks to server.py's /api/* routes)
+style.css                    Frontend styling
+requirements.txt             Python dependencies
+.env.example                 Template for your GROQ_API_KEY and HF_TOKEN
+tests/test_smoke.py          Boot/health smoke tests (see "Testing" below)
+.github/workflows/ci-cd.yml  CI/CD pipeline (see "CI/CD" below)
+Dockerfile                   Container image definition
+docker-compose.yml           Local Docker Compose setup
 ```
 
 ## Setup
@@ -152,6 +156,53 @@ call. Needs `HF_TOKEN` set (see "Setup" above).
 5. **Clear all** wipes the current session's vector store and dataframes
    so you can start fresh.
 
+## Testing
+
+`tests/test_smoke.py` contains lightweight smoke tests that boot the
+real FastAPI app and hit the routes that work **without** any API keys
+or network/LLM calls (`/api/health`, `/api/config`, `/api/documents`,
+the empty-question case of `/api/ask`, and `/` for the frontend). They
+exist to catch "the app doesn't even start" bugs — a bad import, a
+broken route, a wrong static-files path — before they reach Docker
+build or deployment. They intentionally do **not** cover real
+ingest/ask behavior, which needs a live `GROQ_API_KEY` and `HF_TOKEN`.
+
+Run them locally:
+
+```bash
+pip install pytest httpx
+python -m pytest tests/ -v
+```
+
+Use `python -m pytest` rather than the bare `pytest` command — running
+it as a module puts the project root on `sys.path`, which is what lets
+`tests/test_smoke.py` do `import server` successfully.
+
+## CI/CD
+
+`.github/workflows/ci-cd.yml` runs on every push and pull request, and
+deploys automatically on pushes to `main`.
+
+**CI — "Lint, Test & Build Check"** (every push/PR):
+1. Installs dependencies and lints the code with `ruff`
+2. Compiles `server.py` and `rag_engine.py` to catch syntax errors
+3. Runs the smoke tests above with `pytest`
+4. Builds the Docker image (build-only, nothing is pushed) to confirm
+   the `Dockerfile` still builds cleanly
+
+**CD — "Build, Push & Deploy"** (only on `main`, only if CI passes):
+1. Builds the Docker image again and pushes it to the **GitHub
+   Container Registry** (`ghcr.io`), tagged both `latest` and with the
+   commit SHA
+2. If a `RENDER_DEPLOY_HOOK` repository secret is set, POSTs to it to
+   trigger a fresh deploy on Render. If the secret isn't set, this step
+   is skipped rather than failing — set it under your GitHub repo's
+   **Settings → Secrets and variables → Actions**, using the Deploy
+   Hook URL from Render Dashboard → your service → **Settings**.
+
+A broken push never reaches deployment: CD only runs once CI succeeds,
+and pull requests only ever run CI.
+
 ## Known limits (by design, not bugs)
 
 - **Scanned/image-only PDFs** have no extractable text layer — this app
@@ -195,3 +246,6 @@ call. Needs `HF_TOKEN` set (see "Setup" above).
   embeddings instead of local?" above) — if it's still happening, the
   most likely remaining cause is Playwright's Chromium browser during URL
   ingestion; file/CSV/PDF uploads don't launch it.
+- **CI fails with `ModuleNotFoundError: No module named 'server'`**: the
+  workflow (or your local run) used bare `pytest` instead of `python -m
+  pytest` — see "Testing" above for why that matters.
