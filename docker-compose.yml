@@ -4,7 +4,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env   # must contain GROQ_API_KEY (see .env.example)
+      - .env   # must contain GROQ_API_KEY and HF_TOKEN (see .env.example)
     environment:
       # Chroma's default (tempfile.gettempdir()) resolves to /tmp inside
       # the container — pointing it here instead means the volume below

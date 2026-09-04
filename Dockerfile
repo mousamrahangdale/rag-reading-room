@@ -19,22 +19,18 @@ WORKDIR /app
 # not on every code edit.
 COPY requirements.txt .
 
-# Install a CPU-only PyTorch build FIRST, from PyTorch's own CPU wheel
-# index, before requirements.txt pulls in sentence-transformers (which
-# depends on torch). A plain `pip install torch` on Linux grabs the
-# CUDA-enabled build by default — several GB of NVIDIA CUDA runtime
-# libraries this app never touches, since embeddings run on CPU here.
-# Installing the CPU wheel first satisfies sentence-transformers'
-# dependency without ever triggering that much bigger download.
+# No local torch / sentence-transformers install anymore — embeddings
+# run through Hugging Face's hosted Inference API instead (see
+# rag_engine.get_embeddings()), specifically so this image, and the
+# running container's memory footprint, stay small enough for low-RAM
+# free-tier hosts (e.g. Render's free 512MB web service). This is also
+# why bake_embeddings.py is gone: there's no local model to pre-download.
 #
 # The --mount=type=cache line caches pip's download cache across builds
 # (needs Docker BuildKit, which is the default in modern Docker/Docker
 # Desktop) — it doesn't shrink the very first build, but every build
 # after that re-uses already-downloaded wheels instead of re-fetching
 # them, which is where Docker build time usually hurts most day-to-day.
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
 
@@ -44,24 +40,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # versions already match (the browser is already present).
 RUN playwright install chromium --with-deps
 
-# Bake the local embedding model into the image at build time instead
-# of downloading it from HuggingFace on the container's first real
-# request — trades a slightly longer build for a much faster first use
-# after the container starts.
-#
-# This is a best-effort optimization only — see bake_embeddings.py.
-# Hugging Face occasionally rate-limits anonymous downloads (HTTP 429),
-# especially across repeated builds on the same network. If that happens
-# here, this step retries a few times and then simply skips baking the
-# model in rather than failing the whole image build — the app still
-# works fine either way, since get_embeddings() in rag_engine.py
-# downloads the same model lazily on first real use at runtime if it
-# isn't already cached in the image.
-COPY bake_embeddings.py .
-RUN python bake_embeddings.py
-
 COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Render (and most PaaS hosts) assign the port dynamically via $PORT and
+# route traffic to it — a hardcoded 8000 means the platform's health
+# check can never reach the app, even though it's running fine. Falling
+# back to 8000 keeps `docker run`/docker-compose (no $PORT set) working
+# unchanged for local use. Shell form (not exec-array form) is required
+# here so $PORT actually gets expanded at container start.
+CMD uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}

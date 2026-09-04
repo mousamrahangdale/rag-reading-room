@@ -38,6 +38,7 @@ os.environ.setdefault(
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 
 import pandas as pd
+import numpy as np
 from langchain_community.document_loaders import (
     PyPDFLoader,
     TextLoader,
@@ -47,7 +48,8 @@ from langchain_community.document_loaders import (
     BSHTMLLoader,
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.embeddings import Embeddings
+from huggingface_hub import InferenceClient
 from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
 from langchain.chains import RetrievalQA
@@ -605,10 +607,79 @@ def split_documents(docs: List[Document]) -> List[Document]:
 _embeddings = None
 
 
+class _HFInferenceEmbeddings(Embeddings):
+    """
+    Minimal Embeddings implementation using huggingface_hub's
+    InferenceClient.feature_extraction() directly, instead of going
+    through langchain_huggingface's HuggingFaceEndpointEmbeddings.
+
+    Why: HuggingFaceEndpointEmbeddings (as of langchain-huggingface
+    0.1.x) internally calls the low-level InferenceClient.post() method
+    - which huggingface_hub removed in later versions (replaced by
+    typed per-task methods like feature_extraction()). Since
+    requirements.txt doesn't pin huggingface_hub's version, pip installs
+    whatever is current, which no longer has .post() - causing
+    "'InferenceClient' object has no attribute 'post'" at ingest time.
+    Calling feature_extraction() directly sidesteps that mismatch
+    entirely and doesn't depend on langchain_huggingface's internals at
+    all, so it isn't exposed to this kind of breakage again.
+
+    feature_extraction() can return either an already-pooled 1D sentence
+    vector or a 2D (tokens x hidden) matrix depending on how the model is
+    served - mean-pooling the 2D case handles both without needing to
+    know which one comes back.
+    """
+
+    def __init__(self, model: str, token: str):
+        self._client = InferenceClient(model=model, token=token)
+
+    def _embed_one(self, text: str) -> List[float]:
+        result = self._client.feature_extraction(text)
+        arr = np.asarray(result, dtype="float32")
+        if arr.ndim >= 2:
+            arr = arr.reshape(-1, arr.shape[-1]).mean(axis=0)
+        return arr.tolist()
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return [self._embed_one(t) for t in texts]
+
+    def embed_query(self, text: str) -> List[float]:
+        return self._embed_one(text)
+
+
 def get_embeddings():
+    """
+    Uses Hugging Face's hosted (free) Inference API for embeddings instead
+    of loading the sentence-transformers model - and torch - into this
+    process's own memory.
+
+    This matters specifically for low-RAM hosts like Render's free tier
+    (512MB): torch's own baseline footprint plus the loaded model weights
+    alone comfortably exceeds that limit, which is what was silently
+    OOM-killing the server mid-request (no traceback, just a process
+    restart in the logs). Calling the same model over HTTPS instead means
+    this process never holds torch or model weights in memory at all -
+    only the small embedding vectors that come back over the network -
+    at the cost of one extra network round-trip per embedding call.
+
+    Needs a free Hugging Face access token: create one at
+    https://huggingface.co/settings/tokens and set it as HF_TOKEN in your
+    .env file / Render environment variables. Use the "Inference" preset
+    (or a fine-grained token with "Make calls to Inference Providers"
+    enabled) - a plain "Read-Only" token can download models but can't
+    call the Inference API, which is what this app actually needs.
+    """
     global _embeddings
     if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+        token = os.environ.get("HF_TOKEN", "").strip()
+        if not token:
+            raise ValueError(
+                "No HF_TOKEN set. Create a free token at "
+                "https://huggingface.co/settings/tokens (use the "
+                "'Inference' preset) and set it as HF_TOKEN in your .env "
+                "file (or Render's Environment tab)."
+            )
+        _embeddings = _HFInferenceEmbeddings(model=EMBEDDING_MODEL_NAME, token=token)
     return _embeddings
 
 
@@ -1009,7 +1080,6 @@ def format_query_result(plan: dict, computed: dict) -> str:
     }.get(computed["operation"], computed["operation"])
     table = computed["table"]
     matched = computed["matched_rows"]
-    filtered_note = "" if matched == 0 or plan.get("filters") else ""
 
     if computed["kind"] == "scalar":
         subject = f"'{computed['column']}'" if computed["column"] else "rows"
