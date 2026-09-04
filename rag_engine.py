@@ -628,10 +628,19 @@ class _HFInferenceEmbeddings(Embeddings):
     vector or a 2D (tokens x hidden) matrix depending on how the model is
     served - mean-pooling the 2D case handles both without needing to
     know which one comes back.
+
+    embed_documents() batches multiple texts into each feature_extraction()
+    call (see _embed_batch) instead of one HTTP round-trip per chunk -
+    for a file that splits into, say, 50 chunks, that's the difference
+    between 50 sequential network calls and 2, which is what was making
+    uploads feel slow. Falls back to one-by-one for a batch if the
+    batched call ever returns something unexpected, so an upload never
+    hard-fails over this - it just loses the speedup for that one batch.
     """
 
-    def __init__(self, model: str, token: str):
+    def __init__(self, model: str, token: str, batch_size: int = 32):
         self._client = InferenceClient(model=model, token=token)
+        self._batch_size = batch_size
 
     def _embed_one(self, text: str) -> List[float]:
         result = self._client.feature_extraction(text)
@@ -640,8 +649,47 @@ class _HFInferenceEmbeddings(Embeddings):
             arr = arr.reshape(-1, arr.shape[-1]).mean(axis=0)
         return arr.tolist()
 
+    def _embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """
+        Sends one feature_extraction() call for the whole batch. Handles
+        the two response shapes HF's Inference API can return for a
+        batched request:
+          - 2D, shape (batch_size, hidden_dim): already-pooled sentence
+            vectors, one row per input text - the common case for
+            sentence-transformer models.
+          - 3D, shape (batch_size, tokens, hidden_dim): per-token vectors
+            that still need mean-pooling per item.
+        Raises (letting the caller fall back to one-by-one) if the shape
+        doesn't match len(texts) in a way we can confidently interpret.
+        """
+        result = self._client.feature_extraction(texts)
+        arr = np.asarray(result, dtype="float32")
+
+        if arr.ndim == 3:
+            arr = arr.mean(axis=1)  # mean-pool tokens -> (batch, hidden)
+        elif arr.ndim != 2:
+            raise ValueError(f"Unexpected embedding response shape: {arr.shape}")
+
+        if arr.shape[0] != len(texts):
+            raise ValueError(
+                f"Batch size mismatch: sent {len(texts)} texts, got {arr.shape[0]} vectors back"
+            )
+        return arr.tolist()
+
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        return [self._embed_one(t) for t in texts]
+        if not texts:
+            return []
+        all_vecs: List[List[float]] = []
+        for i in range(0, len(texts), self._batch_size):
+            batch = texts[i : i + self._batch_size]
+            try:
+                all_vecs.extend(self._embed_batch(batch))
+            except Exception:
+                # Fall back to one-by-one for just this batch rather than
+                # failing the whole upload - slower for this batch only,
+                # not a hard error.
+                all_vecs.extend(self._embed_one(t) for t in batch)
+        return all_vecs
 
     def embed_query(self, text: str) -> List[float]:
         return self._embed_one(text)
