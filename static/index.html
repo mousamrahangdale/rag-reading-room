@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>The Reading Room — Document Q&A</title>
 <meta name="description" content="Ask questions of your own documents — PDF, DOCX, CSV, Excel, HTML, or any web page.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,6 +14,19 @@
 
 <div class="app">
 
+  <!-- ============ MOBILE TOPBAR : only visible <=860px, opens the catalog drawer ============ -->
+  <header class="mobile-topbar">
+    <button class="mobile-menu-btn" id="mobileMenuBtn" type="button"
+            aria-label="Open document catalog" aria-expanded="false" aria-controls="catalog">
+      <span></span><span></span><span></span>
+    </button>
+    <span class="mobile-topbar-mark">§</span>
+    <span class="mobile-topbar-title">The Reading Room</span>
+  </header>
+
+  <!-- Tap-to-close backdrop behind the catalog drawer on mobile -->
+  <div class="catalog-backdrop" id="catalogBackdrop"></div>
+
   <!-- ============ SIDEBAR : the catalog ============ -->
   <aside class="catalog" id="catalog">
 
@@ -23,6 +36,7 @@
         <h1>The Reading Room</h1>
         <p class="catalog-sub">ask questions of what you feed it</p>
       </div>
+      <button class="catalog-close-btn" id="catalogCloseBtn" type="button" aria-label="Close document catalog">✕</button>
     </header>
 
     <section class="intake-block">

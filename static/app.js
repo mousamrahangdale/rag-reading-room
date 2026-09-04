@@ -9,6 +9,11 @@
 const API_BASE = "/api";
 
 // ---- Element refs ----------------------------------------------------------
+const catalogPanel    = document.getElementById("catalog");
+const catalogBackdrop = document.getElementById("catalogBackdrop");
+const mobileMenuBtn   = document.getElementById("mobileMenuBtn");
+const catalogCloseBtn = document.getElementById("catalogCloseBtn");
+
 const dropzone       = document.getElementById("dropzone");
 const fileInput      = document.getElementById("fileInput");
 const urlInput       = document.getElementById("urlInput");
@@ -45,6 +50,44 @@ const tplScopeItem    = document.getElementById("tpl-scope-item");
 let hasDocuments = false;
 let allSourceNames = [];        // every currently-filed document name (deduped)
 let selectedSourceNames = null; // null = "all documents"; otherwise a Set of names
+
+// ---- Mobile catalog drawer ---------------------------------------------------
+// On screens <=860px the catalog becomes an off-canvas drawer (see
+// style.css) instead of a permanently-squeezed sidebar. These helpers
+// open/close it and keep the hamburger button + backdrop + body scroll
+// lock in sync. On wider screens these are no-ops (the elements involved
+// are simply hidden by CSS, and matchMedia checks below make sure
+// leftover "open" state can't get stuck if the window is resized).
+const mobileBreakpoint = window.matchMedia("(max-width: 860px)");
+
+function openCatalog() {
+  catalogPanel.classList.add("open");
+  catalogBackdrop.classList.add("visible");
+  mobileMenuBtn?.setAttribute("aria-expanded", "true");
+  document.body.classList.add("no-scroll");
+}
+
+function closeCatalog() {
+  catalogPanel.classList.remove("open");
+  catalogBackdrop.classList.remove("visible");
+  mobileMenuBtn?.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("no-scroll");
+}
+
+mobileMenuBtn?.addEventListener("click", () => {
+  catalogPanel.classList.contains("open") ? closeCatalog() : openCatalog();
+});
+catalogCloseBtn?.addEventListener("click", closeCatalog);
+catalogBackdrop?.addEventListener("click", closeCatalog);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && catalogPanel.classList.contains("open")) closeCatalog();
+});
+// Resizing past the breakpoint (e.g. rotating a tablet, or a desktop
+// devtools resize) could otherwise leave the drawer "open" underneath a
+// now-desktop layout, with body scroll still locked — reset it.
+mobileBreakpoint.addEventListener("change", (e) => {
+  if (!e.matches) closeCatalog();
+});
 
 // ---- Backend connectivity indicator ------------------------------------------
 async function checkConnection() {
@@ -198,6 +241,10 @@ function onIngestSuccess(data, { announce = true } = {}) {
   }
   renderDrawer(data.sources);
   enableAsking();
+  // On mobile the catalog is a drawer sitting on top of the desk — once
+  // something's filed, get it out of the way so the person can see the
+  // "ready to ask" state and start typing immediately.
+  if (mobileBreakpoint.matches) closeCatalog();
 }
 
 // ---- Drawer rendering -------------------------------------------------------

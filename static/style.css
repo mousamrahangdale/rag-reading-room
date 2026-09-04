@@ -38,6 +38,11 @@
 html, body {
   height: 100%;
   margin: 0;
+  overflow-x: hidden; /* off-canvas drawer transforms below can never cause horizontal scroll */
+}
+
+body.no-scroll {
+  overflow: hidden; /* locks background scroll while the mobile catalog drawer is open */
 }
 
 body {
@@ -68,13 +73,212 @@ a { color: var(--brass-dark); }
    ========================================================================== */
 .app {
   height: 100vh;
+  height: 100dvh; /* accounts for mobile browser chrome (address bar) that 100vh doesn't */
   display: grid;
   grid-template-columns: 340px 1fr;
 }
 
+/* Hidden on desktop/tablet — only appears in the mobile breakpoint below */
+.mobile-topbar {
+  display: none;
+}
+
+.catalog-close-btn {
+  display: none; /* desktop: the drawer/close-button pattern is mobile-only */
+}
+
+.catalog-backdrop {
+  display: none;
+}
+
+/* ---- Laptop / smaller-desktop tightening (not mobile, just less wide) ---- */
+@media (min-width: 861px) and (max-width: 1140px) {
+  .app { grid-template-columns: 280px 1fr; }
+  .catalog { padding: 24px 18px 16px; gap: 22px; }
+}
+
 @media (max-width: 860px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .catalog { max-height: 46vh; overflow-y: auto; }
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .desk {
+    /* Let the grid's 1fr row size this (viewport height minus the
+       mobile-topbar's 52px), instead of the desktop rule's fixed
+       100dvh, which would be taller than the space actually left and
+       clip content under the topbar. */
+    height: auto;
+    min-height: 0;
+  }
+
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 52px;
+    flex: 0 0 auto;
+    padding: env(safe-area-inset-top) 16px 0;
+    padding-top: max(env(safe-area-inset-top), 0px);
+    background: var(--paper-deep);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    z-index: 20;
+  }
+
+  .mobile-menu-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-menu-btn:hover,
+  .mobile-menu-btn:active {
+    background: var(--brass-soft);
+  }
+
+  .mobile-menu-btn span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: var(--ink);
+    border-radius: 1px;
+  }
+
+  .mobile-topbar-mark {
+    font-family: var(--font-display);
+    font-size: 19px;
+    color: var(--brass);
+  }
+
+  .mobile-topbar-title {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* ---- Catalog becomes an off-canvas drawer ---- */
+  .catalog {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(320px, 85vw);
+    max-height: none;
+    padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 30;
+    box-shadow: 6px 0 28px rgba(32, 36, 30, 0.22);
+  }
+
+  .catalog.open {
+    transform: translateX(0);
+  }
+
+  .catalog-header {
+    position: relative;
+    padding-right: 30px; /* room for the close button */
+  }
+
+  .catalog-close-btn {
+    display: block;
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .catalog-close-btn:hover,
+  .catalog-close-btn:active {
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .catalog-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(32, 36, 30, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 25;
+  }
+
+  .catalog-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Inputs need >=16px font-size or iOS Safari auto-zooms the page on focus */
+  #urlInput,
+  #questionInput {
+    font-size: 16px;
+  }
+
+  .thread {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .scope-bar,
+  .asker {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .asker {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .scope-menu {
+    width: min(300px, calc(100vw - 36px));
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .thread,
+  .scope-bar,
+  .asker {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .msg { max-width: 100%; }
+
+  .source-card {
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .desk-empty h2 { font-size: 18px; }
+  .desk-empty p { font-size: 13px; }
+
+  #questionInput { padding: 11px 14px; }
+  .asker .btn-primary { padding: 0 16px; }
 }
 
 /* ==========================================================================
@@ -374,6 +578,7 @@ a { color: var(--brass-dark); }
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   min-width: 0;
 }
 
