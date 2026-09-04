@@ -82,6 +82,13 @@ jobs:
         # keeps whatever case your repo name actually has.
         run: echo "IMAGE_NAME_LC=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
+      # Required for the GitHub Actions cache backend (cache-from/cache-to:
+      # type=gha below) to work — the default Docker driver can't use it.
+      # Without this step, the build fails fast with "buildx failed with:
+      # ... build-cache-backends".
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push Docker image to GHCR
         uses: docker/build-push-action@v6
         with:
