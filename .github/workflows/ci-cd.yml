@@ -9,15 +9,15 @@ on:
     branches: [main]
 
 env:
-  IMAGE_NAME: ${{ github.repository }}   # e.g. yourname/CustomerChurnAnalysis -> lowercased below
+  IMAGE_NAME: ${{ github.repository }}   # e.g. yourname/rag-reading-room -> lowercased below
 
 jobs:
   # ---------------------------------------------------------------------
-  # CI: lint + sanity-check the Python code + make sure the Docker image
-  # actually builds. Runs on every push and every PR.
+  # CI: lint + import/boot-check the app with real smoke tests + make
+  # sure the Docker image actually builds. Runs on every push and PR.
   # ---------------------------------------------------------------------
   ci:
-    name: Lint & Build Check
+    name: Lint, Test & Build Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -27,11 +27,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"   # caches downloaded wheels between runs, keyed on requirements.txt
 
-      - name: Install dependencies (for linting only, not full playwright/chromium)
+      # Full requirements.txt, not just lint tools — server.py/rag_engine.py
+      # import fastapi, langchain, chromadb, etc. at module level, so the
+      # smoke tests below need the real dependency set installed to even
+      # import the app. This does NOT install Playwright's Chromium
+      # browser binary (that's a separate `playwright install` step) —
+      # only needed for actual URL ingestion, not for these smoke tests.
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          pip install -r requirements.txt
+          pip install ruff pytest httpx
 
       - name: Lint with ruff
         # --exit-zero on the first pass keeps this from hard-failing your
@@ -42,6 +50,22 @@ jobs:
 
       - name: Python syntax check
         run: python -m py_compile server.py rag_engine.py
+
+      # Real smoke tests (tests/test_smoke.py): boots the actual FastAPI
+      # app and hits /api/health, /api/config, /api/documents, /api/ask
+      # (empty-question case), and "/" — all of which work with no
+      # GROQ_API_KEY / HF_TOKEN and make no network/LLM calls. This is
+      # what actually catches "the app doesn't even start" bugs (bad
+      # import, broken route, wrong static-files path) that a plain
+      # syntax check can't see. It intentionally does NOT test real
+      # ingest/ask behavior, which needs live API keys.
+      - name: Run smoke tests
+        env:
+          # Dummy value only so resolve_api_key()/get_llm() error paths
+          # behave the same as a real deployment missing config — no
+          # network calls are made in these tests either way.
+          GROQ_API_KEY: ""
+        run: pytest tests/ -v
 
       # This does NOT push anywhere — it just proves the Dockerfile builds
       # cleanly (deps resolve, playwright/chromium installs, etc.) before
