@@ -98,6 +98,14 @@ jobs:
       # Hook does the same job with a single authenticated POST request.
       # Get the URL from: Render Dashboard -> your service -> Settings ->
       # Deploy Hook. Store it as a repo secret named RENDER_DEPLOY_HOOK.
+      #
+      # Note: GitHub Actions doesn't allow the `secrets` context directly
+      # inside an `if:` conditional ("Unrecognized named-value: 'secrets'")
+      # — so the secret is passed through `env:` here first, and the `if:`
+      # checks that env var instead. If the secret isn't set, this step is
+      # skipped (not failed) rather than erroring out.
       - name: Trigger Render deploy
-        if: ${{ secrets.RENDER_DEPLOY_HOOK != '' }}
-        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        if: ${{ env.RENDER_DEPLOY_HOOK != '' }}
+        run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
