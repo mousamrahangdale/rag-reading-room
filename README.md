@@ -5,6 +5,7 @@ FastAPI backend + a static HTML/CSS/JS frontend, free embeddings via
 Hugging Face's hosted Inference API (no local model/torch — keeps the
 app's memory footprint small enough for free-tier hosting), and answers
 from an open-weight model served via Groq's API.
+
 Live demo: https://rag-reading-room-gqpz.onrender.com
 
 ## Files
